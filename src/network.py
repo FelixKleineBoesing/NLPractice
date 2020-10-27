@@ -16,7 +16,7 @@ class Word2Vec:
         self._output_layer = None
         self._init_network()
 
-    def train(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray):
+    def train(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray = None, y_val: np.ndarray = None):
         stopped = False
         epoch = 1
 

@@ -1,5 +1,5 @@
-from collections import Counter
 
+from src.data_constructors import build_word_indices, build_cbow_dataset
 from src.network import Word2Vec
 
 
@@ -9,22 +9,16 @@ def main():
           "but to do what is in us for the succor of those years wherein we are set, " \
           "uprooting the evil in the fields that we know, so that those who live after may have clean earth to till. " \
           "What weather they shall have is not ours to rule."
+    window_size = 2
 
     corp = [[w.lower() for w in sntc.split()] for sntc in txt.split(".") if len(sntc) > 0]
 
-    word_list = set()
-    word_count = Counter()
-    for sntc in corp:
-        word_count += Counter(sntc)
-        word_list.update(sntc)
-
-    vocab_size = len(word_count)
-    # Since we access the index of a word very often, we prebuild indices
-    word_index = {w: i for i, w in enumerate(word_list)}
-    word_index = {i: w for w, i in word_index.items()}
+    vocab_size, word_index, index_word = build_word_indices(corp)
+    X, y = build_cbow_dataset(corpus=corp, word_index=word_index, windows_size=window_size)
 
     word2vec = Word2Vec(vocab_size=vocab_size, n_hidden_neurons=10, epochs=20)
-    word2vec.train()
+    word2vec.train(X=X, y=y)
+
 
 if __name__ == "__main__":
     main()
