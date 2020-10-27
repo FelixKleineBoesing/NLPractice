@@ -21,7 +21,8 @@ class Word2Vec:
         epoch = 1
 
         while not stopped:
-
+            y_hat = self._forward_pass(X)
+            self._backward_pass(y_hat, y, X)
             epoch += 1
             if epoch >= self.epochs:
                 stopped = True

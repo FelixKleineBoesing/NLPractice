@@ -1,5 +1,7 @@
 from collections import Counter
 
+from src.network import Word2Vec
+
 
 def main():
     # - Gandalf the Grey
@@ -21,9 +23,8 @@ def main():
     word_index = {w: i for i, w in enumerate(word_list)}
     word_index = {i: w for w, i in word_index.items()}
 
-
-
-
+    word2vec = Word2Vec(vocab_size=vocab_size, n_hidden_neurons=10, epochs=20)
+    word2vec.train()
 
 if __name__ == "__main__":
     main()
