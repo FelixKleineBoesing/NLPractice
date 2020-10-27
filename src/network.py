@@ -31,6 +31,7 @@ class Word2Vec:
         pass
 
     def _forward_pass(self, X: np.ndarray):
+        # multiply with each slice of 3rd axis and get mean
         x_1 = X @ self._input_layer
         x_2 = x_1 @ self._hidden_layer
         y_hat = softmax(x_2)
@@ -50,7 +51,7 @@ class Word2Vec:
 
     def _init_network(self):
         self._input_layer = np.random.normal(size=(self.vocab_size, self.n_hidden_neurons))
-        self._hidden_layer = np.random.normal(size=(self.vocab_size, self.n_hidden_neurons))
+        self._hidden_layer = np.random.normal(size=(self.n_hidden_neurons, self.vocab_size))
         self._output_layer = None
 
 
