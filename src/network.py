@@ -3,7 +3,7 @@ import numpy as np
 
 class Word2Vec:
 
-    def __init__(self, vocab_size: int, n_hidden_neurons: int = 20, epochs: int = 20, learning_rate: float = 0.1,
+    def __init__(self, vocab_size: int, n_hidden_neurons: int = 20, epochs: int = 20, learning_rate: float = 0.01,
                  clipping_grad_value: float = 50):
         self.epochs = 20
         self.n_hidden_neurons = n_hidden_neurons
@@ -20,7 +20,9 @@ class Word2Vec:
         epoch = 1
 
         while not stopped:
+            print("Epoch: {}".format(epoch))
             y_hat = self._forward_pass(X)
+            print(np.sum(cross_entropy(y_hat, y)))
             self._backward_pass(y_hat, y, X)
             epoch += 1
             if epoch >= self.epochs:
@@ -42,9 +44,9 @@ class Word2Vec:
         return y_hat
 
     def _backward_pass(self, y_hat: np.ndarray, y: np.ndarray, X: np.ndarray):
-        cost_gradient = cross_entropy_grad(y_hat=y_hat, y=y)
-        output_delta = np.outer(self._hidden_layer.activation, cost_gradient)
-        hidden_delta = np.outer(np.mean(X, axis=2), np.dot(self._output_layer.weights, cost_gradient))
+        cost_gradient = cross_entropy_grad(y_hat=y_hat, y=y).T
+        output_delta = self._hidden_layer.activation.T @ cost_gradient.T
+        hidden_delta = np.mean(X, axis=2).T @ (cost_gradient.T @ self._output_layer.weights.T)
         self._output_layer.weights = self._output_layer.weights - self.learning_rate * output_delta
         self._hidden_layer.weights = self._hidden_layer.weights - self.learning_rate * hidden_delta
 
