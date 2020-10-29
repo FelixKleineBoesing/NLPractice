@@ -1,18 +1,21 @@
 import numpy as np
+import pandas as pd
 
 
 class Word2Vec:
 
-    def __init__(self, vocab_size: int, n_hidden_neurons: int = 20, epochs: int = 20, learning_rate: float = 0.01,
-                 clipping_grad_value: float = 50):
+    def __init__(self, vocab_size: int, n_hidden_neurons: int = 20, epochs: int = 20, learning_rate: float = 0.1,
+                 clipping_grad_value: float = 50, batch_size: int = 1):
         self.epochs = 20
         self.n_hidden_neurons = n_hidden_neurons
         self.vocab_size = vocab_size
         self.epochs = epochs
         self.learning_rate = learning_rate
         self.clipping_grad_value = clipping_grad_value
+        self.batch_size = batch_size
         self._hidden_layer: Layer = None
         self._output_layer: Layer = None
+        self._tracking = []
         self._init_network()
 
     def train(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray = None, y_val: np.ndarray = None):
@@ -21,9 +24,15 @@ class Word2Vec:
 
         while not stopped:
             print("Epoch: {}".format(epoch))
+            if self.batch_size > 1:
+                splitted_indices = np.array_split(np.arange(X.shape[0]), self.batch_size)
+            else:
+                splitted_indices = np.arange(X.shape[0])
+            for index in splitted_indices:
+                y_hat = self._forward_pass(X[index, :, :])
+                self._backward_pass(y_hat, y[index, :], X[index, :, :])
             y_hat = self._forward_pass(X)
-            print(np.sum(cross_entropy(y_hat, y)))
-            self._backward_pass(y_hat, y, X)
+            print("Loss: {}".format(np.sum(cross_entropy(y_hat, y))))
             epoch += 1
             if epoch >= self.epochs:
                 stopped = True
@@ -32,21 +41,38 @@ class Word2Vec:
         pass
 
     def _forward_pass(self, X: np.ndarray):
+        if len(X.shape) == 2:
+            X = X.reshape((1, *X.shape))
         # multiply with each slice of 3rd axis and get mean
-        X = np.mean(X, axis=2)
+        X = np.sum(X, axis=2) / np.sum(X > 0, axis=(1, 2)).reshape(X.shape[0],1)
         x_1 = X @ self._hidden_layer.weights
         self._hidden_layer.set_activation(x_1)
-
-        x_2 = x_1 @ self._hidden_layer.weights.T
+        x_2 = x_1 @ self._output_layer.weights
         self._output_layer.set_activation(x_2)
-
         y_hat = softmax(x_2)
+
         return y_hat
 
     def _backward_pass(self, y_hat: np.ndarray, y: np.ndarray, X: np.ndarray):
-        cost_gradient = cross_entropy_grad(y_hat=y_hat, y=y).T
-        output_delta = self._hidden_layer.activation.T @ cost_gradient.T
-        hidden_delta = np.mean(X, axis=2).T @ (cost_gradient.T @ self._output_layer.weights.T)
+        if len(X.shape) == 2:
+            X = X.reshape((1, *X.shape))
+        if len(y_hat.shape) == 1:
+            y_hat = y_hat.reshape((1, *y_hat.shape))
+        if len(y.shape) == 1:
+            y = y.reshape((1, *y.shape))
+        cost_gradient = cross_entropy_grad(y_hat=y_hat, y=y)
+        X = np.sum(X, axis=2) / np.sum(X > 0, axis=(1, 2)).reshape(X.shape[0], 1)
+        output_delta = np.empty((X.shape[0], self._output_layer.weights.shape[0], self._output_layer.weights.shape[1]))
+        hidden_delta = np.empty((X.shape[0], self._hidden_layer.weights.shape[0], self._hidden_layer.weights.shape[1]))
+        for i in range(X.shape[0]):
+            output_delta[i, :, :] = np.outer(self._hidden_layer.activation[i, :], cost_gradient[i, :])
+            hidden_delta[i, :, :] = np.outer(X[i, :], (self._output_layer.weights @ cost_gradient[i, :]))
+
+        hidden_delta = np.mean(hidden_delta, axis=0)
+        output_delta = np.mean(output_delta, axis=0)
+        #output_delta = self._hidden_layer.activation.T @ cost_gradient
+        #hidden_delta = np.mean(X, axis=2).T @ (cost_gradient @ self._output_layer.weights.T)
+
         self._output_layer.weights = self._output_layer.weights - self.learning_rate * output_delta
         self._hidden_layer.weights = self._hidden_layer.weights - self.learning_rate * hidden_delta
 
@@ -56,14 +82,30 @@ class Word2Vec:
         return arr
 
     def _init_network(self):
-        self._hidden_layer = Layer(np.random.normal(size=(self.vocab_size, self.n_hidden_neurons)))
-        self._output_layer = Layer(np.random.normal(size=(self.n_hidden_neurons, self.vocab_size)))
+        self._hidden_layer = Layer(np.random.rand(self.vocab_size, self.n_hidden_neurons))
+        self._output_layer = Layer(np.random.rand(self.n_hidden_neurons, self.vocab_size))
+
+    def get_loss_grad_informations(self):
+        values = []
+        for i in range(len(self._tracking)):
+            tmp = {"epoch": i, "loss": self._tracking[i]["loss"]}
+
+            for j in range(self._tracking[i]["weights_hidden"].shape[0]):
+                tmp.update({"W1{}{}".format(j, k): r for k, r in enumerate(self._tracking[i]["weights_hidden"][j, :])})
+                tmp.update({"dW1{}{}".format(j, k): r for k, r in enumerate(self._tracking[i]["gradient_hidden"][j, :])})
+
+            for j in range(self._tracking[i]["weights_output"].shape[0]):
+                tmp.update({"W2{}{}".format(j, k): r for k, r in enumerate(self._tracking[i]["weights_output"][j, :])})
+                tmp.update({"dW2{}{}".format(j, k): r for k, r in enumerate(self._tracking[i]["gradient_output"][j, :])})
+            values.append(tmp)
+        return pd.DataFrame(values)
 
 
 def softmax(X: np.ndarray):
     assert (len(X.shape) == 2), "x must be two dimensional"
-    exp_x = np.exp(X)
+    exp_x = np.exp(X - np.max(X))
     return exp_x / np.sum(exp_x, axis=1).reshape(X.shape[0], 1)
+
 
 def softmax_grad(X: np.ndarray):
     return softmax(X) * (1 - softmax(X))
@@ -93,3 +135,4 @@ class Layer:
 
     def set_activation(self, activation: np.ndarray):
         self.activation = activation
+
