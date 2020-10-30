@@ -116,18 +116,16 @@ class Word2Vec:
         return self._hidden_layer.weights[index, :]
 
     def get_similar_words(self, word: str, n_top: int = 5):
+        n_top += 1
         word = word.lower()
         word_vector = self.get_word_vector(word)
-        word_similarity = SortedList(key=lambda x: x[1])
 
         theta_sums = self._hidden_layer.weights @ word_vector.reshape(len(word_vector), 1)
-        for i in range(self.vocab_size):
-            theta_den = np.linalg.norm(word_vector) * np.linalg.norm(word_sim_vector)
-
-            word_similarity.add((self.index_word[i], theta_sum / theta_den))
-
-        return dict(word_similarity[:n_top])
-
+        theta_den = (np.linalg.norm(word_vector) * np.linalg.norm(self._hidden_layer.weights, axis=1)).\
+            reshape(theta_sums.shape[0], 1)
+        theta = (theta_sums / theta_den).reshape(theta_sums.shape[0], )
+        max_indices = np.argpartition(theta, -n_top)[-n_top:]
+        return {self.index_word[i]: theta[i] for i in max_indices if self.index_word[i] != word}
 
 
 def softmax(X: np.ndarray):
@@ -160,8 +158,6 @@ class Layer:
 
     def __init__(self, weights: np.ndarray):
         self.weights = weights
-        self.activation = None
 
     def set_activation(self, activation: np.ndarray):
         self.activation = activation
-

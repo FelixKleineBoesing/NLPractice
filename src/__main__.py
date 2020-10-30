@@ -14,12 +14,12 @@ def main():
     corp = [[w.lower() for w in sntc.split()] for sntc in txt_test.split(".") if len(sntc) > 0]
 
     word2vec = Word2Vec(n_hidden_neurons=2, epochs=10, learning_rate=0.3, batch_size=1)
-    word2vec.train(corpus=corp, window_size = 2)
+    word2vec.train(corpus=corp, window_size=2)
 
     corp = [[w.lower() for w in sntc.split()] for sntc in txt.split(".") if len(sntc) > 0]
 
     word2vec = Word2Vec(n_hidden_neurons=10, epochs=20, learning_rate=0.2)
-    word2vec.train(corpus=corp, window_size = 2)
+    word2vec.train(corpus=corp, window_size=2)
     print(word2vec.get_similar_words("evil"))
 
 
