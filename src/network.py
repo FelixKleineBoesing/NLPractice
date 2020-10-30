@@ -1,26 +1,37 @@
 import numpy as np
 import pandas as pd
+from typing import Union
+from sortedcontainers import SortedList
+
+from src.data_constructors import build_word_indices, build_cbow_dataset
 
 
 class Word2Vec:
 
-    def __init__(self, vocab_size: int, n_hidden_neurons: int = 20, epochs: int = 20, learning_rate: float = 0.1,
+    def __init__(self, n_hidden_neurons: int = 20, epochs: int = 20, learning_rate: float = 0.1,
                  clipping_grad_value: float = 50, batch_size: int = 1):
         self.epochs = 20
         self.n_hidden_neurons = n_hidden_neurons
-        self.vocab_size = vocab_size
+        self.vocab_size = None
         self.epochs = epochs
         self.learning_rate = learning_rate
         self.clipping_grad_value = clipping_grad_value
         self.batch_size = batch_size
+        self.word_index = None
+        self.index_word = None
         self._hidden_layer: Layer = None
         self._output_layer: Layer = None
         self._tracking = []
-        self._init_network()
 
-    def train(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray = None, y_val: np.ndarray = None):
+    def train(self, corpus: Union[list, str], window_size: int = 1):
         stopped = False
         epoch = 1
+        vocab_size, word_index, index_word = build_word_indices(corpus)
+        self.vocab_size = vocab_size
+        self.word_index = word_index
+        self.index_word = index_word
+        self._init_network()
+        X, y = build_cbow_dataset(corpus=corpus, word_index=word_index, windows_size=window_size)
 
         while not stopped:
             print("Epoch: {}".format(epoch))
@@ -99,6 +110,24 @@ class Word2Vec:
                 tmp.update({"dW2{}{}".format(j, k): r for k, r in enumerate(self._tracking[i]["gradient_output"][j, :])})
             values.append(tmp)
         return pd.DataFrame(values)
+
+    def get_word_vector(self, word: str):
+        index = self.word_index[word.lower()]
+        return self._hidden_layer.weights[index, :]
+
+    def get_similar_words(self, word: str, n_top: int = 5):
+        word = word.lower()
+        word_vector = self.get_word_vector(word)
+        word_similarity = SortedList(key=lambda x: x[1])
+
+        theta_sums = self._hidden_layer.weights @ word_vector.reshape(len(word_vector), 1)
+        for i in range(self.vocab_size):
+            theta_den = np.linalg.norm(word_vector) * np.linalg.norm(word_sim_vector)
+
+            word_similarity.add((self.index_word[i], theta_sum / theta_den))
+
+        return dict(word_similarity[:n_top])
+
 
 
 def softmax(X: np.ndarray):

@@ -1,5 +1,6 @@
 from collections import Counter
 import numpy as np
+from typing import Union
 
 
 def build_word_indices(corpus):
@@ -16,7 +17,10 @@ def build_word_indices(corpus):
     return vocab_size, word_index, index_word
 
 
-def build_cbow_dataset(corpus: list, word_index: dict, windows_size: int):
+def build_cbow_dataset(corpus: Union[list, str], word_index: dict, windows_size: int):
+    if isinstance(corpus, str):
+        corpus = [[w.lower() for w in sntc.split()] for sntc in corpus.split(".") if len(sntc) > 0]
+
     length_data = np.sum([len(l) for l in corpus])
     X = np.zeros((length_data, len(word_index), windows_size * 2))
     y = np.zeros((length_data, len(word_index)))
