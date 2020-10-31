@@ -11,14 +11,6 @@ def softmax_grad(X: np.ndarray):
     return softmax(X) * (1 - softmax(X))
 
 
-def _reshape_activ_gradient(grad: np.ndarray):
-    if len(np.array(grad).shape) == 0:
-        grad = np.array([[grad], ])
-    if len(grad.shape) == 1:
-        grad = grad.reshape(grad.shape[0], 1)
-    return grad
-
-
 def cross_entropy(y_hat, y):
     if len(y.shape) == 3:
         return - np.sum([y[:, :, i] * np.log(y_hat) for i in range(y.shape[2])])
