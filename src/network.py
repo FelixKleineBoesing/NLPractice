@@ -48,9 +48,6 @@ class Word2Vec:
             if epoch >= self.epochs:
                 stopped = True
 
-    def predict(self, X: np.ndarray):
-        pass
-
     def _forward_pass(self, X: np.ndarray):
         if len(X.shape) == 2:
             X = X.reshape((1, *X.shape))
@@ -81,8 +78,6 @@ class Word2Vec:
 
         hidden_delta = np.mean(hidden_delta, axis=0)
         output_delta = np.mean(output_delta, axis=0)
-        #output_delta = self._hidden_layer.activation.T @ cost_gradient
-        #hidden_delta = np.mean(X, axis=2).T @ (cost_gradient @ self._output_layer.weights.T)
 
         self._output_layer.weights = self._output_layer.weights - self.learning_rate * output_delta
         self._hidden_layer.weights = self._hidden_layer.weights - self.learning_rate * hidden_delta
