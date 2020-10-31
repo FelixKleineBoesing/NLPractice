@@ -1,6 +1,6 @@
 
 from src.data_constructors import build_word_indices, build_cbow_dataset
-from src.network import Word2Vec
+from src.word2vec import Word2Vec
 from src.optimizer import RMSProp, Adam
 
 
