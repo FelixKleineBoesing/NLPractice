@@ -46,8 +46,8 @@ class Word2Vec:
         self.method = method
         self.word_index = None
         self.index_word = None
-        self._hidden_layer: Layer = None
-        self._output_layer: Layer = None
+        self._hidden_layer: Layer
+        self._output_layer: Layer
         self.loss_per_epoch = []
 
     def train(self, corpus: Union[list, str], window_size: int = 1):
@@ -93,7 +93,8 @@ class Word2Vec:
 
         return y_hat
 
-    def _reshape_for_cbow(self, X, y, y_hat):
+    @staticmethod
+    def _reshape_for_cbow(X, y, y_hat):
         if len(X.shape) == 2:
             X = X.reshape((1, *X.shape))
         if len(y_hat.shape) == 1:
@@ -102,7 +103,8 @@ class Word2Vec:
             y = y.reshape((1, *y.shape))
         return X, y, y_hat
 
-    def _reshape_for_skipgram(self, X, y, y_hat):
+    @staticmethod
+    def _reshape_for_skipgram(X, y, y_hat):
         if len(X.shape) == 2:
             X = X.reshape((1, *X.shape))
         if len(y_hat.shape) == 2:
