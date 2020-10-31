@@ -6,7 +6,7 @@ import numpy as np
 class Optimizer(abc.ABC):
 
     @abc.abstractmethod
-    def change_weights(self, name: str, weights: np.ndarray, gradients: np.ndarray):
+    def change_weights(self, weights: np.ndarray, gradients: np.ndarray, name: str = None):
         """
 
         :param name: id/name of weights and gradients which is used when current gradient are combined with
@@ -23,7 +23,7 @@ class SGD(Optimizer):
     def __init__(self, learning_rate: float):
         self.learning_rate = learning_rate
 
-    def change_weights(self, name: str, weights: np.ndarray, gradients: np.ndarray):
+    def change_weights(self, weights: np.ndarray, gradients: np.ndarray, name: str = None):
         return weights - self.learning_rate * gradients
 
 
@@ -35,7 +35,8 @@ class RMSProp(Optimizer):
         self.eta = inital_learning_rate
         self._past_vs = {}
 
-    def change_weights(self, name: str, weights: np.ndarray, gradients: np.ndarray):
+    def change_weights(self, weights: np.ndarray, gradients: np.ndarray, name: str = None):
+        assert name is not None, "name needs to be set for rmsprop"
         if name not in self._past_vs:
             v = np.power(gradients, 2)
         else:
@@ -55,7 +56,8 @@ class Adam(Optimizer):
         self._past_vs = {}
         self._past_ss = {}
 
-    def change_weights(self, name: str, weights: np.ndarray, gradients: np.ndarray):
+    def change_weights(self, weights: np.ndarray, gradients: np.ndarray, name: str = None):
+        assert name is not None, "name needs to be set for adam"
         if name not in self._past_vs:
             v = gradients
             s = np.power(gradients, 2)
