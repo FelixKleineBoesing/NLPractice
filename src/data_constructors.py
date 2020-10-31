@@ -4,9 +4,12 @@ from typing import Union
 
 
 def build_word_indices(corpus):
+    if isinstance(corpus, str):
+        corpus = [[w.lower() for w in sntc.split()] for sntc in corpus.split(".") if len(sntc) > 0]
+
     word_list = set()
     word_count = Counter()
-    for sntc in corpus:
+    for i, sntc in enumerate(corpus):
         word_count += Counter(sntc)
         word_list.update(sntc)
 
@@ -14,20 +17,15 @@ def build_word_indices(corpus):
     # Since we access the index of a word very often, we prebuild indices
     word_index = {w: i for i, w in enumerate(word_list)}
     index_word = {i: w for w, i in word_index.items()}
-    return vocab_size, word_index, index_word
+    return corpus, vocab_size, word_index, index_word
 
 
 def build_cbow_dataset(corpus: Union[list, str], word_index: dict, windows_size: int):
-    if isinstance(corpus, str):
-        corpus = [[w.lower() for w in sntc.split()] for sntc in corpus.split(".") if len(sntc) > 0]
-
     target, context = _build_target_context(corpus=corpus, word_index=word_index, windows_size=windows_size)
     return context, target
 
 
 def build_skipgram_dataset(corpus: Union[list, str], word_index: dict, windows_size: int):
-    if isinstance(corpus, str):
-        corpus = [[w.lower() for w in sntc.split()] for sntc in corpus.split(".") if len(sntc) > 0]
     target, context = _build_target_context(corpus=corpus, word_index=word_index, windows_size=windows_size)
     target = target.reshape((*target.shape, 1))
     return target, context
