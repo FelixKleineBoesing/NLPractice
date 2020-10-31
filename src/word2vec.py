@@ -4,7 +4,7 @@ from typing import Union
 
 from src.data_constructors import build_word_indices, build_cbow_dataset, build_skipgram_dataset
 from src.helpers import softmax, cross_entropy, cross_entropy_grad, Layer
-from src.optimizer import SGD, Optimizer
+from src.optimizer import SGD, Optimizer, RMSProp, Adam
 
 
 class Word2Vec:
@@ -22,11 +22,17 @@ class Word2Vec:
         :param method: can be cbow or skipgram
         :param optimizer: can be sgd, rmsprop or adam
         """
+        method = method.lower()
         assert method in ["cbow", "skipgram"]
         if isinstance(optimizer, str):
+            optimizer = optimizer.lower()
             assert optimizer in ["sgd", "adam", "rmsprop"]
             if optimizer == "sgd":
                 self.optimizer = SGD(learning_rate)
+            elif optimizer == "rmsprop":
+                self.optimizer = RMSProp(inital_learning_rate=learning_rate)
+            elif optimizer == "adam":
+                self.optimizer = Adam(inital_learning_rate=learning_rate)
         else:
             assert isinstance(optimizer, Optimizer)
             self.optimizer = optimizer
@@ -42,12 +48,12 @@ class Word2Vec:
         self.index_word = None
         self._hidden_layer: Layer = None
         self._output_layer: Layer = None
-        self._tracking = []
+        self.loss_per_epoch = []
 
     def train(self, corpus: Union[list, str], window_size: int = 1):
         stopped = False
         epoch = 1
-        vocab_size, word_index, index_word = build_word_indices(corpus)
+        corpus, vocab_size, word_index, index_word = build_word_indices(corpus)
         self.vocab_size = vocab_size
         self.word_index = word_index
         self.index_word = index_word
@@ -67,7 +73,9 @@ class Word2Vec:
                 y_hat = self._forward_pass(X[index, :, :])
                 self._backward_pass(y_hat, y[index, :], X[index, :, :])
             y_hat = self._forward_pass(X)
-            print("Loss: {}".format(np.sum(cross_entropy(y_hat, y))))
+            loss = np.sum(cross_entropy(y_hat, y))
+            self.loss_per_epoch.append(loss)
+            print("Loss: {}".format(loss))
             epoch += 1
             if epoch >= self.epochs:
                 stopped = True
@@ -119,8 +127,8 @@ class Word2Vec:
         hidden_delta = np.mean(hidden_delta, axis=0)
         output_delta = np.mean(output_delta, axis=0)
 
-        self._output_layer.weights = self.optimizer.change_weights("output", self._output_layer.weights, output_delta)
-        self._hidden_layer.weights = self.optimizer.change_weights("hidden", self._hidden_layer.weights, hidden_delta)
+        self._output_layer.weights = self.optimizer.change_weights(self._output_layer.weights, output_delta, "output")
+        self._hidden_layer.weights = self.optimizer.change_weights(self._hidden_layer.weights, hidden_delta, "hidden")
 
     def _clip_gradients(self, arr):
         arr[arr > self.clipping_grad_value] = self.clipping_grad_value
@@ -130,21 +138,6 @@ class Word2Vec:
     def _init_network(self):
         self._hidden_layer = Layer(np.random.rand(self.vocab_size, self.n_hidden_neurons))
         self._output_layer = Layer(np.random.rand(self.n_hidden_neurons, self.vocab_size))
-
-    def get_loss_grad_informations(self):
-        values = []
-        for i in range(len(self._tracking)):
-            tmp = {"epoch": i, "loss": self._tracking[i]["loss"]}
-
-            for j in range(self._tracking[i]["weights_hidden"].shape[0]):
-                tmp.update({"W1{}{}".format(j, k): r for k, r in enumerate(self._tracking[i]["weights_hidden"][j, :])})
-                tmp.update({"dW1{}{}".format(j, k): r for k, r in enumerate(self._tracking[i]["gradient_hidden"][j, :])})
-
-            for j in range(self._tracking[i]["weights_output"].shape[0]):
-                tmp.update({"W2{}{}".format(j, k): r for k, r in enumerate(self._tracking[i]["weights_output"][j, :])})
-                tmp.update({"dW2{}{}".format(j, k): r for k, r in enumerate(self._tracking[i]["gradient_output"][j, :])})
-            values.append(tmp)
-        return pd.DataFrame(values)
 
     def get_word_vector(self, word: str):
         index = self.word_index[word.lower()]
