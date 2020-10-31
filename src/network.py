@@ -1,15 +1,35 @@
 import numpy as np
 import pandas as pd
 from typing import Union
-from sortedcontainers import SortedList
 
-from src.data_constructors import build_word_indices, build_cbow_dataset
+from src.data_constructors import build_word_indices, build_cbow_dataset, build_skipgram_dataset
+from src.helpers import softmax, cross_entropy, cross_entropy_grad, Layer
+from src.optimizer import SGD, Optimizer
 
 
 class Word2Vec:
 
     def __init__(self, n_hidden_neurons: int = 20, epochs: int = 20, learning_rate: float = 0.1,
-                 clipping_grad_value: float = 50, batch_size: int = 1):
+                 clipping_grad_value: float = 50, batch_size: int = 1, method: str = "cbow",
+                 optimizer: Union[str, Optimizer] = "sgd"):
+        """
+
+        :param n_hidden_neurons:
+        :param epochs:
+        :param learning_rate:
+        :param clipping_grad_value:
+        :param batch_size:
+        :param method: can be cbow or skipgram
+        :param optimizer: can be sgd, rmsprop or adam
+        """
+        assert method in ["cbow", "skipgram"]
+        if isinstance(optimizer, str):
+            assert optimizer in ["sgd", "adam", "rmsprop"]
+            if optimizer == "sgd":
+                self.optimizer = SGD(learning_rate)
+        else:
+            assert isinstance(optimizer, Optimizer)
+            self.optimizer = optimizer
         self.epochs = 20
         self.n_hidden_neurons = n_hidden_neurons
         self.vocab_size = None
@@ -17,6 +37,7 @@ class Word2Vec:
         self.learning_rate = learning_rate
         self.clipping_grad_value = clipping_grad_value
         self.batch_size = batch_size
+        self.method = method
         self.word_index = None
         self.index_word = None
         self._hidden_layer: Layer = None
@@ -31,7 +52,10 @@ class Word2Vec:
         self.word_index = word_index
         self.index_word = index_word
         self._init_network()
-        X, y = build_cbow_dataset(corpus=corpus, word_index=word_index, windows_size=window_size)
+        if self.method == "cbow":
+            X, y = build_cbow_dataset(corpus=corpus, word_index=word_index, windows_size=window_size)
+        else:
+            X, y = build_skipgram_dataset(corpus=corpus, word_index=word_index, windows_size=window_size)
 
         while not stopped:
             print("Epoch: {}".format(epoch))
@@ -61,13 +85,29 @@ class Word2Vec:
 
         return y_hat
 
-    def _backward_pass(self, y_hat: np.ndarray, y: np.ndarray, X: np.ndarray):
+    def _reshape_for_cbow(self, X, y, y_hat):
         if len(X.shape) == 2:
             X = X.reshape((1, *X.shape))
         if len(y_hat.shape) == 1:
             y_hat = y_hat.reshape((1, *y_hat.shape))
         if len(y.shape) == 1:
             y = y.reshape((1, *y.shape))
+        return X, y, y_hat
+
+    def _reshape_for_skipgram(self, X, y, y_hat):
+        if len(X.shape) == 2:
+            X = X.reshape((1, *X.shape))
+        if len(y_hat.shape) == 2:
+            y_hat = y_hat.reshape((*y_hat.shape, 1))
+        if len(y.shape) == 2:
+            y = y.reshape((1, *y.shape, 1))
+        return X, y, y_hat
+
+    def _backward_pass(self, y_hat: np.ndarray, y: np.ndarray, X: np.ndarray):
+        if self.method == "cbow":
+            X, y, y_hat = self._reshape_for_cbow(X, y, y_hat)
+        else:
+            X, y, y_hat = self._reshape_for_skipgram(X, y, y_hat)
         cost_gradient = cross_entropy_grad(y_hat=y_hat, y=y)
         X = np.sum(X, axis=2) / np.sum(X > 0, axis=(1, 2)).reshape(X.shape[0], 1)
         output_delta = np.empty((X.shape[0], self._output_layer.weights.shape[0], self._output_layer.weights.shape[1]))
@@ -79,8 +119,8 @@ class Word2Vec:
         hidden_delta = np.mean(hidden_delta, axis=0)
         output_delta = np.mean(output_delta, axis=0)
 
-        self._output_layer.weights = self._output_layer.weights - self.learning_rate * output_delta
-        self._hidden_layer.weights = self._hidden_layer.weights - self.learning_rate * hidden_delta
+        self._output_layer.weights = self.optimizer.change_weights("output", self._output_layer.weights, output_delta)
+        self._hidden_layer.weights = self.optimizer.change_weights("hidden", self._hidden_layer.weights, hidden_delta)
 
     def _clip_gradients(self, arr):
         arr[arr > self.clipping_grad_value] = self.clipping_grad_value
@@ -121,38 +161,3 @@ class Word2Vec:
         theta = (theta_sums / theta_den).reshape(theta_sums.shape[0], )
         max_indices = np.argpartition(theta, -n_top)[-n_top:]
         return {self.index_word[i]: theta[i] for i in max_indices if self.index_word[i] != word}
-
-
-def softmax(X: np.ndarray):
-    assert (len(X.shape) == 2), "x must be two dimensional"
-    exp_x = np.exp(X - np.max(X))
-    return exp_x / np.sum(exp_x, axis=1).reshape(X.shape[0], 1)
-
-
-def softmax_grad(X: np.ndarray):
-    return softmax(X) * (1 - softmax(X))
-
-
-def _reshape_activ_gradient(grad: np.ndarray):
-    if len(np.array(grad).shape) == 0:
-        grad = np.array([[grad], ])
-    if len(grad.shape) == 1:
-        grad = grad.reshape(grad.shape[0], 1)
-    return grad
-
-
-def cross_entropy(y_hat, y):
-    return - np.sum(y * np.log(y_hat))
-
-
-def cross_entropy_grad(y_hat, y):
-    return y_hat - y
-
-
-class Layer:
-
-    def __init__(self, weights: np.ndarray):
-        self.weights = weights
-
-    def set_activation(self, activation: np.ndarray):
-        self.activation = activation
