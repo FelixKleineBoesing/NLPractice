@@ -22,3 +22,12 @@ class Word2VecTester(unittest.TestCase):
         word2vec.train(corpus=test, window_size=2)
         self.assertTrue(word2vec.loss_per_epoch[-1] < 1.5)
 
+    def test_get_similar_words(self):
+        word2vec = Word2Vec(epochs=50)
+        test = "This is a bad test"
+        word2vec.train(corpus=test, window_size=2)
+        similar_words = word2vec.get_similar_words("bad", n_top=3)
+        self.assertListEqual(list(similar_words.keys()), ["test", "this", "a"])
+
+
+

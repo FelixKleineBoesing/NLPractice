@@ -84,7 +84,7 @@ class Word2Vec:
         if len(X.shape) == 2:
             X = X.reshape((1, *X.shape))
         # multiply with each slice of 3rd axis and get mean
-        X = np.sum(X, axis=2) / np.sum(X > 0, axis=(1, 2)).reshape(X.shape[0],1)
+        X = np.sum(X, axis=2) / np.sum(X > 0, axis=(1, 2)).reshape(X.shape[0], 1)
         x_1 = X @ self._hidden_layer.weights
         self._hidden_layer.set_activation(x_1)
         x_2 = x_1 @ self._output_layer.weights
