@@ -26,3 +26,4 @@ Primary:
 
 Secondary:
 - Huffmann Encoding for Word2Vec
+- Negative Sampling for Word2vec
