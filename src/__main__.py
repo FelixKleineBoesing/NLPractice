@@ -51,7 +51,6 @@ def main_preprocess():
                                                  index=False)
 
 
-
 if __name__ == "__main__":
     #main_word2vec()
     #main_preprocess()
