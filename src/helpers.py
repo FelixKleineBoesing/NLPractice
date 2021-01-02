@@ -1,4 +1,7 @@
+import re
+
 import numpy as np
+import pandas as pd
 
 
 def softmax(X: np.ndarray):
@@ -33,3 +36,35 @@ class Layer:
 
     def set_activation(self, activation: np.ndarray):
         self.activation = activation
+
+
+def clean_sentence(sntc: str):
+    sen = sntc.strip('.')
+
+    # insert space between words and punctuations
+    sen = re.sub(r"([?.!,¿;।])", r" \1 ", sen)
+    sen = re.sub(r'[" "]+', " ", sen)
+
+    sen = re.sub(r"[^a-zA-Z?.!,¿']+", " ", sen)
+    sen = sen.lower()
+
+    sen = sen.strip()
+    sen = '<BOS> ' + sen + ' <EOS>'
+
+    sen = ' '.join(sen.split())
+    return sen
+
+
+def clean_and_merge_sentences(german_path: str, english_path: str, output_file_path: str):
+    german, english = [], []
+    with open(german_path, "r", encoding="utf-8") as f:
+        for line in f.readlines():
+            german.append(clean_sentence(line))
+
+    with open(english_path, "r", encoding="utf-8") as g:
+        for line in g.readlines():
+            english.append(clean_sentence(line))
+
+    data = pd.DataFrame({"german": german, "english": english})
+
+    data.to_csv(output_file_path, index=False)

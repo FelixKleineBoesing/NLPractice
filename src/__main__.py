@@ -1,10 +1,14 @@
+from pathlib import Path
 
-from src.data_constructors import build_word_indices, build_cbow_dataset
-from src.word2vec import Word2Vec
-from src.optimizer import RMSProp, Adam
+import pandas as pd
+
+from src.helpers import clean_and_merge_sentences
+from src.models.word2vec import Word2Vec
+from src.optimizer import Adam
+from src.models.seq2seq import Encoder, Decoder, Seq2Seq
 
 
-def main():
+def main_word2vec():
     # - Gandalf the Grey
     txt = "It is not our part to master all the tides of the world, " \
           "but to do what is in us for the succor of those years wherein we are set, " \
@@ -25,5 +29,30 @@ def main():
     print(word2vec.get_similar_words("evil"))
 
 
+def main_seq2seq():
+    data = pd.read_csv("../data/german-english/miniset_langs.csv")
+    german = data["german"].tolist()
+    english = data["english"].tolist()
+
+    encoder = Encoder(vocab_size=10000, embedding_dim=64, hidden_units=[1024])
+    decoder = Decoder(vocab_size=10000, embedding_dim=64, hidden_units=[1024])
+
+    seq2seq = Seq2Seq(encoder=encoder, decoder=decoder)
+    seq2seq.train(english, german, number_epochs=20)
+
+
+def main_preprocess():
+    number_records_miniset = 2000
+    clean_and_merge_sentences(german_path=Path("..", "data", "german-english", "german.txt"),
+                              english_path=Path("..", "data", "german-english", "english.txt"),
+                              output_file_path=Path("..", "data", "german-english", "cleaned_langs.csv"))
+    data = pd.read_csv(Path("..", "data", "german-english", "cleaned_langs.csv"))
+    data.iloc[:number_records_miniset, :].to_csv(Path("..", "data", "german-english", "miniset_langs.csv"),
+                                                 index=False)
+
+
+
 if __name__ == "__main__":
-    main()
+    #main_word2vec()
+    #main_preprocess()
+    main_seq2seq()

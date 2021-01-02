@@ -1,7 +1,7 @@
 import unittest
 
 from src.optimizer import Optimizer
-from src.word2vec import Word2Vec
+from src.models.word2vec import Word2Vec
 
 
 class Word2VecTester(unittest.TestCase):

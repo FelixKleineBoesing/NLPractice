@@ -22,7 +22,7 @@ Secondary:
 ### Future Content
 
 Primary:
-- sec2sec
+- seq2seq
 
 Secondary:
 - Huffmann Encoding for Word2Vec
