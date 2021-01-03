@@ -56,7 +56,7 @@ def clean_sentence(sntc: str):
     sen = sen.lower()
 
     sen = sen.strip()
-    sen = '<BOS> ' + sen + ' <EOS>'
+    sen = '<bos> ' + sen + ' <eos>'
 
     sen = ' '.join(sen.split())
     return sen
@@ -94,7 +94,7 @@ def clean_and_merge_sentences(german_path: str, english_path: str, output_file_p
 
 
 def tokenize_sentences(sentences, num_words: int = 30000, oov_token: str = "<UNK>"):
-    tokenizer = Tokenizer(num_words=num_words, oov_token=oov_token)
+    tokenizer = Tokenizer(num_words=num_words, oov_token=oov_token, filters='!"#$%&()*+,-./:;=?@[\\]^_`{|}~\t\n')
     tokenizer.fit_on_texts(sentences)
     word_index = tokenizer.word_index
     sequences = tokenizer.texts_to_sequences(sentences)

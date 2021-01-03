@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
-
+import numpy as np
 from src.helpers import clean_and_merge_sentences
 from src.models.word2vec import Word2Vec
 from src.optimizer import Adam
@@ -30,15 +30,21 @@ def main_word2vec():
 
 
 def main_seq2seq():
-    data = pd.read_csv("../data/german-english/miniset_langs.csv")
+    share_data = 1.0
+    data = pd.read_csv("../data/german-english/cleaned_langs.csv")
+    indices = np.random.choice(np.arange(data.shape[0]), size=int(share_data*data.shape[0]))
+    data = data.iloc[indices, :]
     german = data["german"].tolist()
     english = data["english"].tolist()
 
-    encoder = Encoder(vocab_size=10000, embedding_dim=64, hidden_units=[1024])
-    decoder = Decoder(vocab_size=10000, embedding_dim=64, hidden_units=[1024])
+    encoder = Encoder(vocab_size=10000, embedding_dim=64, hidden_units=[512])
+    decoder = Decoder(vocab_size=10000, embedding_dim=64, hidden_units=[512])
 
     seq2seq = Seq2Seq(encoder=encoder, decoder=decoder)
-    seq2seq.train(english, german, number_epochs=20)
+    seq2seq.train(english, german, number_epochs=2)
+
+    translated_sentence = seq2seq.translate_sentence("This is my first try of a seq2seq model with tensorflow")
+    print(translated_sentence)
 
 
 def main_preprocess():
