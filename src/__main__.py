@@ -1,5 +1,5 @@
 from pathlib import Path
-
+import tensorflow as tf
 import pandas as pd
 import numpy as np
 from src.helpers import clean_and_merge_sentences
@@ -30,17 +30,18 @@ def main_word2vec():
 
 
 def main_seq2seq():
-    share_data = 1.0
+    share_data = 0.1
     data = pd.read_csv("../data/german-english/cleaned_langs.csv")
     indices = np.random.choice(np.arange(data.shape[0]), size=int(share_data*data.shape[0]))
     data = data.iloc[indices, :]
     german = data["german"].tolist()
     english = data["english"].tolist()
 
-    encoder = Encoder(vocab_size=10000, embedding_dim=64, hidden_units=[512])
-    decoder = Decoder(vocab_size=10000, embedding_dim=64, hidden_units=[512])
+    encoder = Encoder(vocab_size=10000, embedding_dim=64, hidden_units=[128])
+    decoder = Decoder(vocab_size=10000, embedding_dim=64, hidden_units=[128])
 
     seq2seq = Seq2Seq(encoder=encoder, decoder=decoder)
+
     seq2seq.train(english, german, number_epochs=2)
 
     translated_sentence = seq2seq.translate_sentence("This is my first try of a seq2seq model with tensorflow")
@@ -58,6 +59,8 @@ def main_preprocess():
 
 
 if __name__ == "__main__":
+    #my_devices = tf.config.experimental.list_physical_devices(device_type='CPU')
+    #tf.config.experimental.set_visible_devices(devices=my_devices, device_type='CPU')
     #main_word2vec()
     #main_preprocess()
     main_seq2seq()

@@ -14,6 +14,9 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from src.helpers import tokenize_sentences, arraylike, create_train_test_splits, clean_sentence
 from src.models.attention_layers import AttentionDotProduct
 
+physical_devices = tf.config.list_physical_devices('GPU')
+tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
+
 
 class Encoder(Model):
     # Doc of subclass model:
@@ -106,27 +109,31 @@ class Seq2Seq:
         return tf.reduce_mean(loss * mask)
 
     def _train_step(self, input, output):
-        loss = 0
         with tf.GradientTape() as g:
-            enc_seq_output, enc_hidden = self.encoder(input)
-            # this is neccessary so that decoder and encoder will be optimized as one system
-            dec_hidden = enc_hidden
-            dec_input = input[:, 0]
-            for i in range(1, output.shape[1]):
-                word_prob, dec_hidden, _ = self.decoder(dec_input, dec_hidden, enc_seq_output)
-                actuals = output[:, i]
-
-                if np.count_nonzero(actuals) == 0:
-                    break
-
-                loss += self.calculate_loss(actuals, word_prob)
-
-                dec_input = actuals
+            loss = self._forward_pass(input=input, output=output)
 
         variables = self.encoder.trainable_variables + self.decoder.trainable_variables
         gradients = g.gradient(loss, variables)
         self.optimizer.apply_gradients(zip(gradients, variables))
         return loss / int(output.shape[1])
+
+    def _forward_pass(self, input, output):
+        loss = 0
+        enc_seq_output, enc_hidden = self.encoder(input)
+        # this is neccessary so that decoder and encoder will be optimized as one system
+        dec_hidden = enc_hidden
+        dec_input = input[:, 0]
+        for i in range(1, output.shape[1]):
+            word_prob, dec_hidden, _ = self.decoder(dec_input, dec_hidden, enc_seq_output)
+            actuals = output[:, i]
+
+            if np.count_nonzero(actuals) == 0:
+                break
+
+            loss += self.calculate_loss(actuals, word_prob)
+
+            dec_input = actuals
+        return loss
 
     def train(self, input_language: arraylike, output_language: arraylike, number_epochs: int = 20):
         assert len(input_language) == len(output_language), "input and output language must be equal length, " \
@@ -160,8 +167,13 @@ class Seq2Seq:
 
             epoch_loss = sum(loss_per_batch) / steps_per_epoch
             self.loss_per_epoch.append(epoch_loss)
-            logging.info("Epoch: {} \t Loss: {} \t Time taken: {}".
-                         format(epoch + 1, epoch_loss, time.time() - epoch_start))
+            logging_string = "Epoch: {} \t Loss: {} \t Time taken: {}".format(
+                epoch + 1, epoch_loss, time.time() - epoch_start
+            )
+            # if self.test_ratio > 0.0:
+            #     val_loss = self._forward_pass(input_splits[1], output_splits[1])
+            #     logging_string + " \t Val Loss: {}".format(val_loss)
+            logging.info(logging_string)
         self.trained = True
 
     def dump_graph(self):
