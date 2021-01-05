@@ -1,84 +1,25 @@
-from typing import List, Union
 import time
 import numpy as np
 import logging
-import pandas as pd
 import tensorflow as tf
-from tensorflow.keras.layers import Embedding, LSTM, Dense, GRU
-from tensorflow.keras import Model
 from tensorflow.python.data import Dataset
 from tensorflow.keras.optimizers import Optimizer, Adam
 from tensorflow.keras.losses import Loss, SparseCategoricalCrossentropy
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 from src.helpers import tokenize_sentences, arraylike, create_train_test_splits, clean_sentence
-from src.models.attention_layers import AttentionDotProduct
+from src.models.seq2seq.decoder import Decoder
+from src.models.seq2seq.encoder import Encoder
 
 physical_devices = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
-
-
-class Encoder(Model):
-    # Doc of subclass model:
-    # https://www.tensorflow.org/api_docs/python/tf/keras/Model
-
-    def __init__(self, vocab_size: int, embedding_dim: int, hidden_units: List[int]):
-        super().__init__()
-        self.embedding_layer = Embedding(vocab_size, embedding_dim)
-        self.lstm_layers = [
-            GRU(
-                unit,
-                return_sequences=True,
-                return_state=False if i < len(hidden_units) - 1 else True
-            )
-            for i, unit in enumerate(hidden_units)
-        ]
-
-    def call(self, inputs):
-        x = self.embedding_layer(inputs)
-        for layer in self.lstm_layers:
-            x = layer(x)
-        return x
-
-
-class Decoder(Model):
-
-    def __init__(self, vocab_size: int, embedding_dim: int, hidden_units: List[int]):
-        super().__init__()
-        self.embedding_layer = Embedding(vocab_size, embedding_dim)
-        self.lstm_layers = [
-            GRU(
-                unit,
-                return_sequences=False if i < len(hidden_units) - 1 else True,
-                return_state=False if i < len(hidden_units) - 1 else True
-            )
-            for i, unit in enumerate(hidden_units)
-        ]
-        self.prob_layer = Dense(vocab_size, activation="softmax")
-        self.attention_layer = AttentionDotProduct()
-
-    def call(self, decoder_input, decoder_hidden, encoder_sequence_output):
-
-        x = self.embedding_layer(decoder_input)
-        weighted_sum_encoder, attention_scores = self.attention_layer(decoder_hidden, encoder_sequence_output)
-
-        x = tf.concat([weighted_sum_encoder, x], axis=-1)
-        x = tf.expand_dims(x, 1)
-        for layer in self.lstm_layers:
-            x = layer(x)
-
-        decoder_output, decoder_state = x
-
-        word_prob = self.prob_layer(decoder_output)
-
-        return word_prob, decoder_state, attention_scores
 
 
 class Seq2Seq:
 
     def __init__(self, encoder: Encoder, decoder: Decoder, optimizer: Optimizer = None, loss_function: Loss = None,
                  num_words: int = 10000, batch_size: int = 512, test_ratio: float = 0.3,
-                 max_words_in_sentence: int = 20):
+                 max_words_in_sentence: int = 20, sentence_predictor: str = "greedy", predictor_args: dict = None):
         if optimizer is None:
             optimizer = Adam(0.01)
         if loss_function is None:
@@ -95,6 +36,14 @@ class Seq2Seq:
         self.input_tokenizer, self.output_tokenizer = None, None
         self.input_word_index, self.output_word_index = None, None
         self.max_words_in_sentence = max_words_in_sentence
+        self.sentence_predictor = sentence_predictor
+        if predictor_args is None:
+            predictor_args = {}
+        if sentence_predictor == "greedy":
+            predictor_args["k"] = 1
+        self.predictor_args = predictor_args
+
+
 
     def summary(self):
         print("Model Summary Encoder:")
@@ -194,15 +143,34 @@ class Seq2Seq:
         enc_seq_output, enc_hidden = self.encoder(enc_input)
         dec_input = tf.convert_to_tensor([self.output_word_index["<bos>"]])
         dec_hidden = enc_hidden
+        if self.sentence_predictor in ["greedy", "beam-search"]:
+            return self._beam_search_decoding(dec_input, dec_hidden, enc_seq_output)
+        else:
+            pass
+
+    def _beam_search_decoding(self, dec_input, dec_hidden, enc_seq_output):
         sentence_end_word_id = self.output_word_index["<eos>"]
-        output_seq = []
-        for i in range(self.max_words_in_sentence * 2):
-            word_prob, dec_hidden, _ = self.decoder(dec_input, dec_hidden, enc_seq_output)
-            pred_word_id = tf.argmax(word_prob[0, 0, :]).numpy()
-            output_seq.append(pred_word_id)
-            if pred_word_id == sentence_end_word_id:
-                break
+        if self.predictor_args["k"] == 1:
+            output_seq = []
+            for i in range(self.max_words_in_sentence * 2):
+                word_prob, dec_hidden, _ = self.decoder(dec_input, dec_hidden, enc_seq_output)
+                pred_word_id = tf.argmax(word_prob[0, 0, :]).numpy()
+                output_seq.append(pred_word_id)
+                if pred_word_id == sentence_end_word_id:
+                    break
 
-            dec_input = tf.convert_to_tensor([pred_word_id])
+                dec_input = tf.convert_to_tensor([pred_word_id])
 
-        return self.output_tokenizer.sequences_to_texts([output_seq])
+            return self.output_tokenizer.sequences_to_texts([output_seq])
+
+        else:
+            output_seq = []
+            completly_searched = False
+            for i in range(self.max_words_in_sentence * 2):
+                word_prob, dec_hidden, _ = self.decoder(dec_input, dec_hidden, enc_seq_output)
+                probs, indices = tf.math.top_k(word_prob[0, 0, :], k=self.predictor_args["k"])
+                output_seq.append(pred_word_id)
+                if pred_word_id == sentence_end_word_id:
+                    break
+
+                dec_input = tf.convert_to_tensor([pred_word_id])
