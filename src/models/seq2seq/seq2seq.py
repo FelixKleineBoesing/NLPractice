@@ -164,11 +164,17 @@ class Seq2Seq:
             return self.output_tokenizer.sequences_to_texts([output_seq])
 
         else:
-            output_seq = []
-            completly_searched = False
-            for i in range(self.max_words_in_sentence * 2):
+            output_seq = {}
+            depth = 0
+            searched = False
+            while not searched:
                 word_prob, dec_hidden, _ = self.decoder(dec_input, dec_hidden, enc_seq_output)
                 probs, indices = tf.math.top_k(word_prob[0, 0, :], k=self.predictor_args["k"])
+                for index in indices:
+                    stop = True if index == sentence_end_word_id or depth >= self.max_words_in_sentence else False
+                    output_seq[index] = {"score": probs, "stop": stop, "depth": depth + 1}
+                output_seq["hidden_state"] = dec_hidden
+
                 output_seq.append(pred_word_id)
                 if pred_word_id == sentence_end_word_id:
                     break
