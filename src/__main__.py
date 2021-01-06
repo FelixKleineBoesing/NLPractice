@@ -3,9 +3,11 @@ import tensorflow as tf
 import pandas as pd
 import numpy as np
 from src.helpers import clean_and_merge_sentences
+from src.models import Encoder
+from src.models.seq2seq.decoder import GreedyPredictor, Decoder
 from src.models.word2vec import Word2Vec
 from src.optimizer import Adam
-from src.models.seq2seq import Encoder, Decoder, Seq2Seq
+from src.models.seq2seq.seq2seq import Seq2Seq
 
 
 def main_word2vec():
@@ -30,32 +32,32 @@ def main_word2vec():
 
 
 def main_seq2seq():
-    share_data = 0.1
+    share_data = 1.0
     data = pd.read_csv("../data/german-english/cleaned_langs.csv")
     indices = np.random.choice(np.arange(data.shape[0]), size=int(share_data*data.shape[0]))
     data = data.iloc[indices, :]
     german = data["german"].tolist()
     english = data["english"].tolist()
 
-    encoder = Encoder(vocab_size=10000, embedding_dim=64, hidden_units=[128])
-    decoder = Decoder(vocab_size=10000, embedding_dim=64, hidden_units=[128])
+    encoder = Encoder(vocab_size=10000, embedding_dim=128, hidden_units=[512])
+    decoder = Decoder(vocab_size=10000, embedding_dim=128, hidden_units=[512])
+    sentence_predictor = GreedyPredictor(max_words_in_sentence=20)
 
-    seq2seq = Seq2Seq(encoder=encoder, decoder=decoder)
+    seq2seq = Seq2Seq(encoder=encoder, decoder=decoder, sentence_predictor=sentence_predictor, batch_size=128,
+                      num_words=10000)
 
-    seq2seq.train(english, german, number_epochs=2)
+    seq2seq.train(english, german, number_epochs=50)
 
     translated_sentence = seq2seq.translate_sentence("This is my first try of a seq2seq model with tensorflow")
     print(translated_sentence)
+    translated_sentence1 = seq2seq.translate_sentence("We welcome you to a calm and warm ambience")
+    print(translated_sentence1)
 
 
 def main_preprocess():
-    number_records_miniset = 2000
     clean_and_merge_sentences(german_path=Path("..", "data", "german-english", "german.txt"),
                               english_path=Path("..", "data", "german-english", "english.txt"),
                               output_file_path=Path("..", "data", "german-english", "cleaned_langs.csv"))
-    data = pd.read_csv(Path("..", "data", "german-english", "cleaned_langs.csv"))
-    data.iloc[:number_records_miniset, :].to_csv(Path("..", "data", "german-english", "miniset_langs.csv"),
-                                                 index=False)
 
 
 if __name__ == "__main__":

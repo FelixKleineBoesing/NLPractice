@@ -8,22 +8,26 @@ from tensorflow.keras.losses import Loss, SparseCategoricalCrossentropy
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 from src.helpers import tokenize_sentences, arraylike, create_train_test_splits, clean_sentence
-from src.models.seq2seq.decoder import Decoder
+from src.models.seq2seq.decoder import Decoder, GreedyPredictor, SentencePredictor
 from src.models.seq2seq.encoder import Encoder
 
 physical_devices = tf.config.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
+if len(physical_devices) > 0:
+    tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
 
 class Seq2Seq:
 
     def __init__(self, encoder: Encoder, decoder: Decoder, optimizer: Optimizer = None, loss_function: Loss = None,
                  num_words: int = 10000, batch_size: int = 512, test_ratio: float = 0.3,
-                 max_words_in_sentence: int = 20, sentence_predictor: str = "greedy", predictor_args: dict = None):
+                 max_words_in_sentence: int = 20, sentence_predictor: SentencePredictor = None):
         if optimizer is None:
             optimizer = Adam(0.01)
         if loss_function is None:
             loss_function = SparseCategoricalCrossentropy(reduction="none")
+        if sentence_predictor is None:
+            sentence_predictor = GreedyPredictor(max_words_in_sentence=max_words_in_sentence)
+
         self.optimizer = optimizer
         self.loss_function = loss_function
         self.encoder = encoder
@@ -37,13 +41,6 @@ class Seq2Seq:
         self.input_word_index, self.output_word_index = None, None
         self.max_words_in_sentence = max_words_in_sentence
         self.sentence_predictor = sentence_predictor
-        if predictor_args is None:
-            predictor_args = {}
-        if sentence_predictor == "greedy":
-            predictor_args["k"] = 1
-        self.predictor_args = predictor_args
-
-
 
     def summary(self):
         print("Model Summary Encoder:")
@@ -99,7 +96,7 @@ class Seq2Seq:
         buffer_size = input_splits[0].shape[0]
         dataset = Dataset.from_tensor_slices((input_splits[0], output_splits[0])).shuffle(buffer_size=buffer_size)
         dataset = dataset.batch(self.batch_size)
-        steps_per_epoch = buffer_size // self.batch_size
+        steps_per_epoch = max(buffer_size // self.batch_size, 1)
 
         for epoch in range(number_epochs):
             epoch_start = time.time()
@@ -108,7 +105,7 @@ class Seq2Seq:
             for (batch, (input, target)) in enumerate(dataset.take(steps_per_epoch)):
                 batch_start = time.time()
                 batch_loss = self._train_step(input, target)
-                if batch % int(steps_per_epoch / 5) == 0:
+                if batch % max(int(steps_per_epoch / 5), 1) == 0:
                     logging.warning("Epoch: {} \t Batch: {} \t Loss: {:.4f} \t Time taken: {}".
                                  format(epoch + 1, batch, batch_loss, time.time() - batch_start))
 
@@ -143,40 +140,10 @@ class Seq2Seq:
         enc_seq_output, enc_hidden = self.encoder(enc_input)
         dec_input = tf.convert_to_tensor([self.output_word_index["<bos>"]])
         dec_hidden = enc_hidden
-        if self.sentence_predictor in ["greedy", "beam-search"]:
-            return self._beam_search_decoding(dec_input, dec_hidden, enc_seq_output)
-        else:
-            pass
-
-    def _beam_search_decoding(self, dec_input, dec_hidden, enc_seq_output):
         sentence_end_word_id = self.output_word_index["<eos>"]
-        if self.predictor_args["k"] == 1:
-            output_seq = []
-            for i in range(self.max_words_in_sentence * 2):
-                word_prob, dec_hidden, _ = self.decoder(dec_input, dec_hidden, enc_seq_output)
-                pred_word_id = tf.argmax(word_prob[0, 0, :]).numpy()
-                output_seq.append(pred_word_id)
-                if pred_word_id == sentence_end_word_id:
-                    break
+        output_seq = self.sentence_predictor.predict_sentence(
+            self.decoder, dec_input, dec_hidden, enc_seq_output, sentence_end_word_id
+        )
 
-                dec_input = tf.convert_to_tensor([pred_word_id])
+        return self.output_tokenizer.sequences_to_texts([output_seq])
 
-            return self.output_tokenizer.sequences_to_texts([output_seq])
-
-        else:
-            output_seq = {}
-            depth = 0
-            searched = False
-            while not searched:
-                word_prob, dec_hidden, _ = self.decoder(dec_input, dec_hidden, enc_seq_output)
-                probs, indices = tf.math.top_k(word_prob[0, 0, :], k=self.predictor_args["k"])
-                for index in indices:
-                    stop = True if index == sentence_end_word_id or depth >= self.max_words_in_sentence else False
-                    output_seq[index] = {"score": probs, "stop": stop, "depth": depth + 1}
-                output_seq["hidden_state"] = dec_hidden
-
-                output_seq.append(pred_word_id)
-                if pred_word_id == sentence_end_word_id:
-                    break
-
-                dec_input = tf.convert_to_tensor([pred_word_id])
