@@ -4,7 +4,8 @@ import pandas as pd
 import numpy as np
 from src.helpers import clean_and_merge_sentences
 from src.models import Encoder
-from src.models.seq2seq.decoder import GreedyPredictor, Decoder, BeamSearchPredictor
+from src.models.seq2seq.decoder import Decoder
+from src.models.seq2seq.sentence_predictor import BeamSearchPredictor, GreedyPredictor
 from src.models.word2vec import Word2Vec
 from src.optimizer import Adam
 from src.models.seq2seq.seq2seq import Seq2Seq
@@ -42,7 +43,7 @@ def main_seq2seq():
     encoder = Encoder(vocab_size=10000, embedding_dim=128, hidden_units=[512])
     decoder = Decoder(vocab_size=10000, embedding_dim=128, hidden_units=[512])
     sentence_predictor = GreedyPredictor(max_words_in_sentence=20)
-    sentence_predictor = BeamSearchPredictor(k=3, max_words_in_sentence=4)
+    sentence_predictor = BeamSearchPredictor(k=3, max_words_in_sentence=20)
 
     seq2seq = Seq2Seq(encoder=encoder, decoder=decoder, sentence_predictor=sentence_predictor, batch_size=128,
                       num_words=10000)

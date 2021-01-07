@@ -8,7 +8,8 @@ from tensorflow.keras.losses import Loss, SparseCategoricalCrossentropy
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 from src.helpers import tokenize_sentences, arraylike, create_train_test_splits, clean_sentence
-from src.models.seq2seq.decoder import Decoder, GreedyPredictor, SentencePredictor
+from src.models.seq2seq.decoder import Decoder
+from src.models.seq2seq.sentence_predictor import GreedyPredictor, SentencePredictor
 from src.models.seq2seq.encoder import Encoder
 
 physical_devices = tf.config.list_physical_devices('GPU')
