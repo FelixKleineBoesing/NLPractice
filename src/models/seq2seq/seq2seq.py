@@ -52,7 +52,7 @@ class Seq2Seq:
         self.checkpoint = tf.train.Checkpoint(encoder=self.encoder,
                                               decoder=self.decoder,
                                               optimizer=self.optimizer)
-        if restore:
+        if restore and os.path.exists(self.checkpoint_dir):
             self.checkpoint.restore(self.checkpoint_prefix)
 
     def set_sentence_predictor(self, sententence_predictor: SentencePredictor):
