@@ -23,7 +23,8 @@ class Seq2Seq:
     def __init__(self, encoder: Encoder, decoder: Decoder, optimizer: Optimizer = None, loss_function: Loss = None,
                  num_words: int = 10000, batch_size: int = 512, test_ratio: float = 0.3,
                  max_words_in_sentence: int = 20, sentence_predictor: SentencePredictor = None,
-                 checkpoint_dir: str = "../../../data/german-english/seq2seq-checkpoints/", checkpoint_steps: int = 1):
+                 checkpoint_dir: str = "../../../data/german-english/seq2seq-checkpoints/", checkpoint_steps: int = 1,
+                 restore: bool = True):
         if optimizer is None:
             optimizer = Adam(0.01)
         if loss_function is None:
@@ -48,6 +49,14 @@ class Seq2Seq:
         self.checkpoint_steps = checkpoint_steps
         self.checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
         self.checkpoint = None
+        self.checkpoint = tf.train.Checkpoint(encoder=self.encoder,
+                                              decoder=self.decoder,
+                                              optimizer=self.optimizer)
+        if restore:
+            self.checkpoint.restore(self.checkpoint_prefix)
+
+    def set_sentence_predictor(self, sententence_predictor: SentencePredictor):
+        self.sentence_predictor = sententence_predictor
 
     def summary(self):
         print("Model Summary Encoder:")
@@ -91,9 +100,6 @@ class Seq2Seq:
     def train(self, input_language: arraylike, output_language: arraylike, number_epochs: int = 20):
         assert len(input_language) == len(output_language), "input and output language must be equal length, " \
                                                             "since the observations must be matching translations"
-        self.checkpoint = tf.train.Checkpoint(encoder=self.encoder,
-                                              decoder=self.decoder,
-                                              optimizer=self.optimizer)
         input_word_index, input_sentence, input_tokenizer = tokenize_sentences(input_language,
                                                                                num_words=self.num_words)
         output_word_index, output_sentence, output_tokenizer = tokenize_sentences(output_language,
