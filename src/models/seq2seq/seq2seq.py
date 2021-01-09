@@ -1,3 +1,4 @@
+import os
 import time
 import numpy as np
 import logging
@@ -21,7 +22,8 @@ class Seq2Seq:
 
     def __init__(self, encoder: Encoder, decoder: Decoder, optimizer: Optimizer = None, loss_function: Loss = None,
                  num_words: int = 10000, batch_size: int = 512, test_ratio: float = 0.3,
-                 max_words_in_sentence: int = 20, sentence_predictor: SentencePredictor = None):
+                 max_words_in_sentence: int = 20, sentence_predictor: SentencePredictor = None,
+                 checkpoint_dir: str = "../../../data/german-english/seq2seq-checkpoints/", checkpoint_steps: int = 1):
         if optimizer is None:
             optimizer = Adam(0.01)
         if loss_function is None:
@@ -42,6 +44,10 @@ class Seq2Seq:
         self.input_word_index, self.output_word_index = None, None
         self.max_words_in_sentence = max_words_in_sentence
         self.sentence_predictor = sentence_predictor
+        self.checkpoint_dir = checkpoint_dir
+        self.checkpoint_steps = checkpoint_steps
+        self.checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+        self.checkpoint = None
 
     def summary(self):
         print("Model Summary Encoder:")
@@ -85,7 +91,9 @@ class Seq2Seq:
     def train(self, input_language: arraylike, output_language: arraylike, number_epochs: int = 20):
         assert len(input_language) == len(output_language), "input and output language must be equal length, " \
                                                             "since the observations must be matching translations"
-
+        self.checkpoint = tf.train.Checkpoint(encoder=self.encoder,
+                                              decoder=self.decoder,
+                                              optimizer=self.optimizer)
         input_word_index, input_sentence, input_tokenizer = tokenize_sentences(input_language,
                                                                                num_words=self.num_words)
         output_word_index, output_sentence, output_tokenizer = tokenize_sentences(output_language,
@@ -107,20 +115,25 @@ class Seq2Seq:
                 batch_start = time.time()
                 batch_loss = self._train_step(input, target)
                 if batch % max(int(steps_per_epoch / 5), 1) == 0:
-                    logging.warning("Epoch: {} \t Batch: {} \t Loss: {:.4f} \t Time taken: {}".
-                                 format(epoch + 1, batch, batch_loss, time.time() - batch_start))
+                    logging.warning("Epoch: {} \t Batch: {} \t Rel Loss: {:.4f} \t Time taken: {}".
+                                 format(epoch + 1, batch, batch_loss,
+                                        time.time() - batch_start))
 
                 loss_per_batch.append(batch_loss)
 
             epoch_loss = sum(loss_per_batch) / steps_per_epoch
             self.loss_per_epoch.append(epoch_loss)
-            logging_string = "Epoch: {} \t Loss: {} \t Time taken: {}".format(
+            logging_string = "Epoch: {} \t Rel Loss: {:.4f} \t Time taken: {}".format(
                 epoch + 1, epoch_loss, time.time() - epoch_start
             )
-            # if self.test_ratio > 0.0:
-            #     val_loss = self._forward_pass(input_splits[1], output_splits[1])
-            #     logging_string + " \t Val Loss: {}".format(val_loss)
-            logging.info(logging_string)
+            if self.test_ratio > 0.0:
+                val_loss = self._forward_pass(input_splits[1], output_splits[1])
+                rel_val_loss = val_loss / input_splits[1].shape[0]
+                logging_string += " \t Rel Val Loss: {:.4f}".format(rel_val_loss)
+            logging.warning(logging_string)
+            if (epoch + 1) % self.checkpoint_steps == 0:
+                self.checkpoint.save(file_prefix=self.checkpoint_prefix)
+
         self.trained = True
 
     def dump_graph(self):

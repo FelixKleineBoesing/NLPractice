@@ -33,22 +33,22 @@ def main_word2vec():
 
 
 def main_seq2seq():
-    share_data = 1.0
+    share_data = 0.1
     data = pd.read_csv("../data/german-english/cleaned_langs.csv")
     indices = np.random.choice(np.arange(data.shape[0]), size=int(share_data*data.shape[0]))
     data = data.iloc[indices, :]
     german = data["german"].tolist()
     english = data["english"].tolist()
 
-    encoder = Encoder(vocab_size=10000, embedding_dim=128, hidden_units=[512])
-    decoder = Decoder(vocab_size=10000, embedding_dim=128, hidden_units=[512])
+    encoder = Encoder(vocab_size=30000, embedding_dim=128, hidden_units=[512])
+    decoder = Decoder(vocab_size=30000, embedding_dim=128, hidden_units=[512])
     sentence_predictor = GreedyPredictor(max_words_in_sentence=20)
-    sentence_predictor = BeamSearchPredictor(k=3, max_words_in_sentence=20)
+    #sentence_predictor = BeamSearchPredictor(k=3, max_words_in_sentence=20)
 
     seq2seq = Seq2Seq(encoder=encoder, decoder=decoder, sentence_predictor=sentence_predictor, batch_size=128,
-                      num_words=10000)
+                      num_words=30000, checkpoint_dir="../data/german-english/seq2seq-checkpoints")
 
-    seq2seq.train(english, german, number_epochs=1)
+    seq2seq.train(english, german, number_epochs=100)
 
     translated_sentence = seq2seq.translate_sentence("This is my first try of a seq2seq model with tensorflow")
     print(translated_sentence)
