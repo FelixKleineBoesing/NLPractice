@@ -1,6 +1,7 @@
 import os
 import time
 import numpy as np
+import pickle
 import logging
 import tensorflow as tf
 from tensorflow.python.data import Dataset
@@ -13,9 +14,10 @@ from src.models.seq2seq.decoder import Decoder
 from src.models.seq2seq.sentence_predictor import GreedyPredictor, SentencePredictor
 from src.models.seq2seq.encoder import Encoder
 
+
 physical_devices = tf.config.list_physical_devices('GPU')
 if len(physical_devices) > 0:
-    tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
+   tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
 
 class Seq2Seq:
@@ -26,7 +28,13 @@ class Seq2Seq:
                  checkpoint_dir: str = "../../../data/german-english/seq2seq-checkpoints/", checkpoint_steps: int = 1,
                  restore: bool = True):
         if optimizer is None:
-            optimizer = Adam(0.01)
+            optimizer = Adam(learning_rate=tf.Variable(0.01),
+                             beta_1=tf.Variable(0.9),
+                             beta_2=tf.Variable(0.999),
+                             epsilon=tf.Variable(1e-7)
+                             )
+            optimizer.iterations
+            optimizer.decay = tf.Variable(0.0)
         if loss_function is None:
             loss_function = SparseCategoricalCrossentropy(reduction="none")
         if sentence_predictor is None:
@@ -39,7 +47,6 @@ class Seq2Seq:
         self.num_words = num_words
         self.batch_size = batch_size
         self.test_ratio = test_ratio
-        self.trained = False
         self.loss_per_epoch = []
         self.input_tokenizer, self.output_tokenizer = None, None
         self.input_word_index, self.output_word_index = None, None
@@ -47,13 +54,23 @@ class Seq2Seq:
         self.sentence_predictor = sentence_predictor
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_steps = checkpoint_steps
-        self.checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
         self.checkpoint = None
         self.checkpoint = tf.train.Checkpoint(encoder=self.encoder,
                                               decoder=self.decoder,
                                               optimizer=self.optimizer)
-        if restore and os.path.exists(self.checkpoint_dir):
-            self.checkpoint.restore(self.checkpoint_prefix)
+        self.checkpoint_manager = tf.train.CheckpointManager(self.checkpoint, self.checkpoint_dir, max_to_keep=3)
+        if not os.path.exists(self.checkpoint_dir):
+            os.mkdir(self.checkpoint_dir)
+        if not os.path.exists(self.checkpoint_dir + "/tokenizer"):
+            os.mkdir(self.checkpoint_dir + "/tokenizer")
+        if restore and len(os.listdir(self.checkpoint_dir)) > 1:
+            self.status = self.checkpoint.restore(self.checkpoint_manager.checkpoints[-2]).expect_partial()
+            with open(self.checkpoint_dir + "/tokenizer/input.pickle", "rb") as f:
+                self.input_tokenizer = pickle.load(f)
+            with open(self.checkpoint_dir + "/tokenizer/output.pickle", "rb") as f:
+                self.output_tokenizer = pickle.load(f)
+            self.input_word_index = self.input_tokenizer.word_index
+            self.output_word_index = self.output_tokenizer.word_index
 
     def set_sentence_predictor(self, sententence_predictor: SentencePredictor):
         self.sentence_predictor = sententence_predictor
@@ -114,33 +131,36 @@ class Seq2Seq:
         steps_per_epoch = max(buffer_size // self.batch_size, 1)
 
         for epoch in range(number_epochs):
-            epoch_start = time.time()
+            try:
+                epoch_start = time.time()
 
-            loss_per_batch = []
-            for (batch, (input, target)) in enumerate(dataset.take(steps_per_epoch)):
-                batch_start = time.time()
-                batch_loss = self._train_step(input, target)
-                if batch % max(int(steps_per_epoch / 5), 1) == 0:
-                    logging.warning("Epoch: {} \t Batch: {} \t Rel Loss: {:.4f} \t Time taken: {}".
-                                 format(epoch + 1, batch, batch_loss,
-                                        time.time() - batch_start))
+                loss_per_batch = []
+                for (batch, (input, target)) in enumerate(dataset.take(steps_per_epoch)):
+                    batch_start = time.time()
+                    batch_loss = self._train_step(input, target)
+                    if batch % max(int(steps_per_epoch / 5), 1) == 0:
+                        logging.warning("Epoch: {} \t Batch: {} \t Rel Loss: {:.4f} \t Time taken: {}".
+                                        format(epoch + 1, batch, batch_loss,
+                                               time.time() - batch_start))
 
-                loss_per_batch.append(batch_loss)
+                    loss_per_batch.append(batch_loss)
 
-            epoch_loss = sum(loss_per_batch) / steps_per_epoch
-            self.loss_per_epoch.append(epoch_loss)
-            logging_string = "Epoch: {} \t Rel Loss: {:.4f} \t Time taken: {}".format(
-                epoch + 1, epoch_loss, time.time() - epoch_start
-            )
-            if self.test_ratio > 0.0:
-                val_loss = self._forward_pass(input_splits[1], output_splits[1])
-                rel_val_loss = val_loss / input_splits[1].shape[0]
-                logging_string += " \t Rel Val Loss: {:.4f}".format(rel_val_loss)
-            logging.warning(logging_string)
-            if (epoch + 1) % self.checkpoint_steps == 0:
-                self.checkpoint.save(file_prefix=self.checkpoint_prefix)
-
-        self.trained = True
+                epoch_loss = sum(loss_per_batch) / steps_per_epoch
+                self.loss_per_epoch.append(epoch_loss)
+                logging_string = "Epoch: {} \t Rel Loss: {:.4f} \t Time taken: {}".format(
+                    epoch + 1, epoch_loss, time.time() - epoch_start
+                )
+                if self.test_ratio > 0.0:
+                    val_loss = self._forward_pass(input_splits[1], output_splits[1])
+                    rel_val_loss = val_loss / input_splits[1].shape[1]
+                    logging_string += " \t Rel Val Loss: {:.4f}".format(rel_val_loss)
+                logging.warning(logging_string)
+                if (epoch + 1) % self.checkpoint_steps == 0:
+                    self.checkpoint_manager.save()
+            except KeyboardInterrupt:
+                self.checkpoint_manager.save()
+            except Exception as e:
+                raise Exception(e)
 
     def dump_graph(self):
         pass
@@ -154,7 +174,7 @@ class Seq2Seq:
     def translate_sentence(self, sentence: str):
         sentence = clean_sentence(sentence)
         seq = pad_sequences(
-            self.input_tokenizer.texts_to_sequences([sentence]),maxlen=self.max_words_in_sentence, padding="post"
+            self.input_tokenizer.texts_to_sequences([sentence]), maxlen=self.max_words_in_sentence, padding="post"
         )
         enc_input = tf.convert_to_tensor(seq)
         enc_seq_output, enc_hidden = self.encoder(enc_input)
@@ -166,4 +186,12 @@ class Seq2Seq:
         )
 
         return self.output_tokenizer.sequences_to_texts([output_seq])
+
+    def save_tokenizer(self):
+        self.input_tokenizer.word_index = self.input_word_index
+        self.output_tokenizer.word_index = self.output_word_index
+        with open(self.checkpoint_dir + "/tokenizer/input.pickle", "wb") as f:
+            pickle.dump(self.input_tokenizer, f, protocol=pickle.HIGHEST_PROTOCOL)
+        with open(self.checkpoint_dir + "/tokenizer/output.pickle", "wb") as f:
+            pickle.dump(self.output_tokenizer, f, protocol=pickle.HIGHEST_PROTOCOL)
 

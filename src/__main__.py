@@ -1,10 +1,16 @@
 from pathlib import Path
+import tensorflow as tf
+import os
 
 from src.helpers import clean_and_merge_sentences
-from src.models.seq2seq.sentence_predictor import GreedyPredictor
+from src.models.seq2seq.sentence_predictor import GreedyPredictor, BeamSearchPredictor
 from src.models.word2vec import Word2Vec
 from src.models.wrappers import train_seq2seq, predict_seq2seq
 from src.optimizer import Adam
+
+my_devices = tf.config.experimental.list_physical_devices(device_type='CPU')
+tf.config.experimental.set_visible_devices(devices=my_devices[0], device_type='CPU')
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
 def main_word2vec():
@@ -29,8 +35,14 @@ def main_word2vec():
 
 
 def main_seq2seq():
-    train_seq2seq()
+    train_seq2seq(share_data=0.001, number_epochs=5)
     sentence_predictor = GreedyPredictor(max_words_in_sentence=20)
+    predict_seq2seq(sentence_predictor=sentence_predictor)
+
+
+def _predict_seq2seq():
+    #sentence_predictor = GreedyPredictor(max_words_in_sentence=20)
+    sentence_predictor = BeamSearchPredictor(k=3, max_words_in_sentence=20)
     predict_seq2seq(sentence_predictor=sentence_predictor)
 
 
@@ -41,8 +53,7 @@ def main_preprocess():
 
 
 if __name__ == "__main__":
-    #my_devices = tf.config.experimental.list_physical_devices(device_type='CPU')
-    #tf.config.experimental.set_visible_devices(devices=my_devices, device_type='CPU')
     #main_word2vec()
     #main_preprocess()
-    main_seq2seq()
+    #main_seq2seq()
+    _predict_seq2seq()
